@@ -41,16 +41,19 @@ const TERMOS_TENTATIVA = [
 ];
 
 const TERMOS_DEVOLUCAO_EM_ANDAMENTO = [
-  "objeto devolvido",
   "devolucao autorizada",
   "em devolucao",
   "sera devolvido ao remetente",
+  "sera devolvido",
   "retorno ao remetente",
+  "encaminhado para devolucao",
 ];
 
 const TERMOS_DEVOLVIDO = [
   "devolvido ao remetente",
   "entregue ao remetente",
+  "objeto devolvido aos correios",
+  "devolvido aos correios",
 ];
 
 const TERMOS_ENDERECAMENTO = [

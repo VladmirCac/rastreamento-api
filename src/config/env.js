@@ -1,10 +1,13 @@
 import "dotenv/config";
 
+const variaveisAusentes = [];
+
 function lerTextoObrigatorio(nome) {
   const valor = process.env[nome]?.trim();
 
   if (!valor) {
-    throw new Error(`Variavel de ambiente obrigatoria ausente: ${nome}`);
+    variaveisAusentes.push(nome);
+    return "";
   }
 
   return valor;
@@ -43,6 +46,7 @@ const config = {
   cronSecret: lerTextoObrigatorio("CRON_SECRET"),
 
   dbHost: lerTextoObrigatorio("DB_HOST"),
+  dbPort: lerNumero("DB_PORT", 3306),
   dbUser: lerTextoObrigatorio("DB_USER"),
   dbPass: lerTextoObrigatorio("DB_PASS"),
   dbName: lerTextoObrigatorio("DB_NAME"),
@@ -51,5 +55,11 @@ const config = {
   correiosConcurrency: Math.max(1, lerNumero("CORREIOS_CONCURRENCY", 10)),
   tokenExpirySafetyMs: Math.max(0, lerNumero("TOKEN_EXPIRY_SAFETY_MS", 60000)),
 };
+
+if (variaveisAusentes.length > 0) {
+  throw new Error(
+    `Variaveis de ambiente obrigatorias ausentes: ${variaveisAusentes.join(", ")}`
+  );
+}
 
 export default config;

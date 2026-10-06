@@ -95,6 +95,12 @@ AIRTABLE_TABLE=nome_da_tabela
 
 CRON_SECRET=defina_um_segredo_forte
 
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=seu_usuario_banco
+DB_PASS=sua_senha_banco
+DB_NAME=seu_nome_banco
+
 REQUEST_TIMEOUT_MS=20000
 CORREIOS_CONCURRENCY=10
 TOKEN_EXPIRY_SAFETY_MS=60000
@@ -114,6 +120,8 @@ A aplicacao considera principalmente estes campos na tabela:
 Os registros buscados seguem a regra:
 
 - `Status != 'Entregue'`
+- `Status != 'Devolvido'`
+- `Status != 'Cancelado'`
 - `Codigo != ''`
 
 ## Como executar
@@ -346,13 +354,14 @@ Secrets sugeridos no GitHub:
 ```bash
 npm start
 npm run dev
+npm test
 ```
 
 ## Observacoes
 
 - O projeto utiliza cache temporario do token dos Correios para evitar autenticacoes desnecessarias.
-- Em caso de erro, a API retorna informacoes uteis para depuracao, como status HTTP, URL chamada e detalhes da resposta.
-- Atualmente o projeto nao possui testes automatizados configurados.
+- Em caso de erro, a API registra informacoes detalhadas nos logs do servidor e protege o retorno ao cliente.
+- Testes automatizados podem ser executados com `npm test`.
 - Mantenha o arquivo `.env` fora do versionamento e publique apenas o `.env.example`.
 
 ## Licenca

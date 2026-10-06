@@ -17,44 +17,58 @@ function tokenAindaValido() {
   return Date.now() < tokenCache.expiresAt - config.tokenExpirySafetyMs;
 }
 
+let requisicaoEmAndamento = null;
+
 export async function gerarToken() {
   if (tokenAindaValido()) {
     return tokenCache.token;
   }
 
-  const response = await axios.post(
-    `${config.correiosBaseUrl}/token/v1/autentica/cartaopostagem`,
-    {
-      numero: config.usuarioMeusCorreios,
-      contrato: config.contratoCorreios,
-      dr: config.correiosDr,
-    },
-    {
-      auth: {
-        username: config.usuarioMeusCorreios,
-        password: config.wsNovaApi,
-      },
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      timeout: config.requestTimeoutMs,
-    },
-  );
-
-  const token = response?.data?.token;
-  const expiresAt = parseExpiry(response?.data?.expiraEm);
-
-  if (!token) {
-    throw new Error("Token dos Correios não retornado pela API");
+  if (requisicaoEmAndamento) {
+    return requisicaoEmAndamento;
   }
 
-  tokenCache = {
-    token,
-    expiresAt,
-  };
+  requisicaoEmAndamento = (async () => {
+    try {
+      const response = await axios.post(
+        `${config.correiosBaseUrl}/token/v1/autentica/cartaopostagem`,
+        {
+          numero: config.usuarioMeusCorreios,
+          contrato: config.contratoCorreios,
+          dr: config.correiosDr,
+        },
+        {
+          auth: {
+            username: config.usuarioMeusCorreios,
+            password: config.wsNovaApi,
+          },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          timeout: config.requestTimeoutMs,
+        },
+      );
 
-  return token;
+      const token = response?.data?.token;
+      const expiresAt = parseExpiry(response?.data?.expiraEm);
+
+      if (!token) {
+        throw new Error("Token dos Correios não retornado pela API");
+      }
+
+      tokenCache = {
+        token,
+        expiresAt,
+      };
+
+      return token;
+    } finally {
+      requisicaoEmAndamento = null;
+    }
+  })();
+
+  return requisicaoEmAndamento;
 }
 
 export function limparCacheToken() {

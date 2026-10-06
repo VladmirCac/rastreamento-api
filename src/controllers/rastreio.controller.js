@@ -1,9 +1,20 @@
+import crypto from "crypto";
 import pLimit from "p-limit";
 import config from "../config/env.js";
 import { gerarToken } from "../services/token.service.js";
 import { consultarRastreiosEmLote } from "../services/correios.service.js";
 import { buscarPendentes, atualizarEmLote } from "../services/airtable.service.js";
 import { mapearStatus } from "../utils/statusMapper.js";
+
+const CORREIOS_REGEX = /^[A-Z]{2}\d{9}[A-Z]{2}$/;
+
+function validarSegredo(recebido, configurado) {
+  if (!recebido || typeof recebido !== "string") return false;
+  const bufA = Buffer.from(recebido);
+  const bufB = Buffer.from(configurado);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function dividirEmLotes(lista, tamanho) {
   const lotes = [];
@@ -17,9 +28,21 @@ function dividirEmLotes(lista, tamanho) {
 
 function montarAtualizacao(registro, ultimoEvento) {
   const novoStatus = mapearStatus(ultimoEvento);
+  const statusAtual = registro.fields?.Status;
+  const eventoAtual = registro.fields?.["Último Evento"];
+  const descricaoEvento = ultimoEvento.descricao || "";
+
+  const mudouStatus = novoStatus !== statusAtual;
+  const mudouEvento = descricaoEvento !== eventoAtual;
+
+  // Se nada relevante mudou, evita requisições de escrita desnecessárias no Airtable
+  if (!mudouStatus && !mudouEvento) {
+    return null;
+  }
+
   const fields = {
     Status: novoStatus,
-    "Último Evento": ultimoEvento.descricao || "",
+    "Último Evento": descricaoEvento,
     "Última Atualização": new Date().toISOString(),
   };
 
@@ -29,7 +52,7 @@ function montarAtualizacao(registro, ultimoEvento) {
       new Date().toISOString().split("T")[0];
   }
 
-  if (novoStatus === "Entregue") {
+  if (novoStatus === "Entregue" && !registro.fields?.["Data Entrega"]) {
     fields["Data Entrega"] =
       ultimoEvento.dtHrCriado || new Date().toISOString();
   }
@@ -41,7 +64,7 @@ function montarAtualizacao(registro, ultimoEvento) {
 }
 
 export default async function rastreioController(req, res) {
-  if (req.headers["x-secret"] !== config.cronSecret) {
+  if (!validarSegredo(req.headers["x-secret"], config.cronSecret)) {
     return res.status(401).json({ erro: "Não autorizado" });
   }
 
@@ -65,11 +88,35 @@ export default async function rastreioController(req, res) {
       });
     }
 
-    const registrosValidos = registros.filter((registro) => registro.fields?.Codigo);
-    const codigos = registrosValidos.map((registro) => registro.fields.Codigo);
-    const mapaRegistros = new Map(
-      registrosValidos.map((registro) => [registro.fields.Codigo, registro]),
-    );
+    // Sanitiza e valida o formato padrão de 13 caracteres dos Correios
+    const registrosValidos = [];
+    const mapaRegistros = new Map();
+
+    for (const registro of registros) {
+      const codigoBruto = registro.fields?.Codigo;
+      if (!codigoBruto || typeof codigoBruto !== "string") continue;
+
+      const codigoLimpo = codigoBruto.trim().toUpperCase();
+      if (CORREIOS_REGEX.test(codigoLimpo)) {
+        registrosValidos.push(registro);
+        mapaRegistros.set(codigoLimpo, registro);
+      } else {
+        console.warn(`[Rastreio] Código com formato inválido ignorado: "${codigoBruto}" (ID: ${registro.id})`);
+      }
+    }
+
+    const codigos = [...mapaRegistros.keys()];
+
+    if (codigos.length === 0) {
+      return res.status(200).json({
+        sucesso: true,
+        mensagem: "Nenhum código de rastreio com formato válido encontrado",
+        totalEncontrados: registros.length,
+        totalAtualizados: 0,
+        totalFalhas: 0,
+        duracaoMs: Date.now() - inicioExecucao,
+      });
+    }
 
     const TAMANHO_LOTE = 50;
     const lotes = dividirEmLotes(codigos, TAMANHO_LOTE);
@@ -87,7 +134,7 @@ export default async function rastreioController(req, res) {
             const atualizacoes = [];
 
             for (const objeto of objetos) {
-              const codigo = objeto.codObjeto;
+              const codigo = objeto.codObjeto?.trim()?.toUpperCase();
               const registro = mapaRegistros.get(codigo);
 
               if (!registro) continue;
@@ -98,7 +145,10 @@ export default async function rastreioController(req, res) {
                 continue;
               }
 
-              atualizacoes.push(montarAtualizacao(registro, ultimoEvento));
+              const atualizacao = montarAtualizacao(registro, ultimoEvento);
+              if (atualizacao) {
+                atualizacoes.push(atualizacao);
+              }
             }
 
             return {
@@ -124,7 +174,9 @@ export default async function rastreioController(req, res) {
       0,
     );
 
-    await atualizarEmLote(atualizacoes);
+    if (atualizacoes.length > 0) {
+      await atualizarEmLote(atualizacoes);
+    }
 
     const duracaoMs = Date.now() - inicioExecucao;
 
@@ -153,17 +205,15 @@ export default async function rastreioController(req, res) {
       duracaoMs,
     });
   } catch (error) {
-    console.error("Erro geral na atualização:");
-    console.error("Status:", error.response?.status);
-    console.error("URL:", error.config?.url);
-    console.error("Método:", error.config?.method);
-    console.error("Resposta:", error.response?.data || error.message);
+    console.error("Erro geral na atualização:", {
+      status: error.response?.status,
+      url: error.config?.url,
+      mensagem: error.message,
+      detalhes: error.response?.data,
+    });
 
     return res.status(500).json({
-      erro: "Erro na atualização dos rastreios",
-      detalhes: error.response?.data || error.message,
-      status: error.response?.status || null,
-      url: error.config?.url || null,
+      erro: "Erro interno no processamento dos rastreios",
       duracaoMs: Date.now() - inicioExecucao,
     });
   }

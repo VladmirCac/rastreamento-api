@@ -18,10 +18,18 @@ test("classifica entrega ao remetente como Devolvido", () => {
   assert.equal(status, "Devolvido");
 });
 
+test("classifica objeto devolvido ao remetente como Devolvido", () => {
+  const status = mapearStatus({
+    descricao: "Objeto devolvido ao remetente",
+  });
+
+  assert.equal(status, "Devolvido");
+});
+
 test("nao finaliza devolucao quando o objeto sera devolvido ao remetente", () => {
   const status = mapearStatus({
-    descricao: "Objeto nÃ£o entregue - cliente desconhecido no local",
-    detalhe: "Objeto serÃ¡ devolvido ao remetente",
+    descricao: "Objeto não entregue - cliente desconhecido no local",
+    detalhe: "Objeto será devolvido ao remetente",
   });
 
   assert.equal(status, "Em trânsito");
@@ -29,7 +37,7 @@ test("nao finaliza devolucao quando o objeto sera devolvido ao remetente", () =>
 
 test("mantem em transito quando o evento indica devolucao em andamento", () => {
   const status = mapearStatus({
-    descricao: "Objeto em devoluÃ§Ã£o ao remetente",
+    descricao: "Objeto em devolução ao remetente",
   });
 
   assert.equal(status, "Em trânsito");
